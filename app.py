@@ -135,25 +135,7 @@ same_station = session.query(*sel).filter(Measurement.station == Station.station
 
 from flask import Flask, jsonify
 
-
-#################################################
-# Flask Setup
-#################################################
 app = Flask(__name__)
-
-#################################################
-# Flask Routes
-#################################################
-
-@app.route("/")
-def welcome():
-    """List all available api routes."""
-    return (
-        f"Available Routes:<br/>"
-        f"/api/v1.0/precipitation<br/>"
-        f"/api/v1.0/stations<br/>"
-        f"/api.v1.0/tobs"
-    )
 
 @app.route("/api/v1.0/precipitation")
 def precipitation():
@@ -165,8 +147,7 @@ def precipitation():
     results = session.query(Measurement.date, Measurement.prcp).all()
 
     session.close()
-
-    # Create a dictionary from the row data and append to a list of all_points
+# Create a dictionary from the row data and append to a list of all_points
     all_points = []
     for date, prcp in results:
         precipitation_dict = {}
@@ -176,5 +157,38 @@ def precipitation():
 
     return jsonify(all_points)
 
-    if __name__ == '__main__':
-        app.run(debug=True)
+@app.route("/api/v1.0/station")
+def station():
+    # Create our session (link) from Python to the DB
+    session = Session(engine)
+
+    """Return a list of all stations"""
+    # Query all 
+    results = session.query(Measurement.station).all()
+
+    session.close()
+
+    # Convert list of tuples into normal list
+    all_stations = list(np.ravel(results))
+
+    return jsonify(all_stations)
+
+
+@app.route("/api/v1.0/tobs")
+def temperatures():
+    # Create our session (link) from Python to the DB
+    session = Session(engine)
+
+    """Return a list of temperature data for last year"""
+    # Query all 
+    results = session.query(Measurement.date, Measurement.tobs).filter(Measurement.date >= one_year_date).all()
+
+    session.close()
+
+    all_temperatures = list(np.ravel(results))
+
+    return jsonify(all_temperatures)
+
+    
+if __name__ == '__main__':
+    app.run(debug=True)
