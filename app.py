@@ -1,12 +1,7 @@
-from matplotlib import style
-style.use('fivethirtyeight')
-import matplotlib.pyplot as plt
-
+from flask import Flask, jsonify
+import datetime as dt
 import numpy as np
 import pandas as pd
-
-import datetime as dt
-
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
@@ -18,124 +13,22 @@ Base = automap_base()
 
 Base.prepare(engine, reflect=True)
 
-Base.classes.keys()
-
 Measurement = Base.classes.measurement
 Station = Base.classes.station
 
-session = Session(engine)
-
-first_row = session.query(Measurement).first()
-first_row.__dict__
-
-first_row = session.query(Station).first()
-first_row.__dict__
-
-for row in session.query(Station.id, Station.station, Station.name, Station.latitude, Station.longitude, Station.elevation).limit(15).all():
-    print(row)
-
-for row in session.query(Measurement.id, Measurement.station, Measurement.date, Measurement.prcp, Measurement.tobs).order_by(Measurement.date.desc()).limit(15).all():
-    print(row)
-
-last_date = dt.datetime(2017, 8, 23)
-one_year_date = last_date - dt.timedelta(days=365)
-print("Last 12 Months: ", one_year_date)
-
-results = session.query(Measurement.date, Measurement.prcp).filter(Measurement.date >= one_year_date).all()
-for result in results:
-    print(f"Date: {result.date}, Precipitation: {result.prcp}")
-
-df = pd.DataFrame(results, columns=['date', 'precipitation'])
-df.set_index('date', inplace=True, )
-# Sort the dataframe by date
-df=df.sort_index()
-df
-
-df.plot(rot=90, legend=False)
-plt.yticks(np.arange(0, 7, step=0.5))
-plt.title('Precipitation')
-plt.ylabel('Inches')
-plt.xlabel('Date')
-plt.figure(figsize=(6, 6))
-plt.show()
-
-df.describe()
-
-inspector = inspect(engine)
-columns = inspector.get_columns('measurement')
-for c in columns:
-    print(c['name'], c["type"])
-
-station_table=session.query(func.count(Station.station)).all()
-station_table
-
-sel = [Measurement.station, 
-       func.count(Measurement.station)
-      ]
-station_count = session.query(*sel).\
-    group_by(Measurement.station).\
-    order_by(func.count(Measurement.station).desc()).all()
-station_count
-
-sel = [Measurement.station, 
-       func.min(Measurement.tobs), 
-       func.max(Measurement.tobs), 
-       func.avg(Measurement.tobs) 
-       ]
-station_temp = session.query(*sel).\
-    filter(Measurement.station == "USC00519281").all()
-station_temp
-
-date1 = dt.datetime(2016, 8, 23)
-
-sel = [Measurement.station, 
-       func.count(Measurement.station) 
-      ]
-year_temp = session.query(*sel).\
-    filter(Measurement.date >= date1).\
-    group_by(Measurement.station).\
-    order_by(func.count(Measurement.station).desc()).all()
-year_temp
-
-sel = [Measurement.date, Measurement.tobs]
-temp_year = session.query(*sel).\
-    filter(Measurement.date >= one_year_date).filter(Measurement.station == "USC00519281").all()
-#temp_year
-
-temp_year_df = pd.DataFrame(temp_year, columns=['date', 'tobs'])
-temp_year_df.set_index('date', inplace=True, )
-# Sort the dataframe by date
-temp_year_df=temp_year_df.sort_index()
-#temp_year_df
-
-ax = temp_year_df.plot.hist(bins=12, alpha=0.5)
-
-inspector = inspect(engine)
-inspector.get_table_names()
-
-columns = inspector.get_columns('measurement')
-for c in columns:
-    print(c['name'], c["type"])
-
-columns = inspector.get_columns('station')
-for c in columns:
-    print(c['name'], c["type"])
-
-session.query(Measurement.station, Station.station).limit(10).all()
-
-same_station = session.query(Measurement, Station).filter(Measurement.station == Station.station).limit(10).all()
-
-for record in same_station:
-    (measurement, station) = record
-    print(measurement.station)
-    print(station.station)
-
-sel = [Measurement.station, Measurement.date, Measurement.prcp, Measurement.tobs, Station.latitude, Station.longitude, Station.elevation]
-same_station = session.query(*sel).filter(Measurement.station == Station.station).limit(10).all()
-
-from flask import Flask, jsonify
-
 app = Flask(__name__)
+
+
+@app.route("/")
+def welcome():
+    """List all available api routes."""
+    return (
+        f"Available Routes:<br/>"
+        f"/api/v1.0/precipitation<br/>"
+        f"/api/v1.0/station<br/>"
+        f"/api/v1.0/tobs<br/>"
+        f"/api/v1.0/<start>/<end>"
+    )
 
 @app.route("/api/v1.0/precipitation")
 def precipitation():
@@ -157,6 +50,7 @@ def precipitation():
 
     return jsonify(all_points)
 
+    
 @app.route("/api/v1.0/station")
 def station():
     # Create our session (link) from Python to the DB
@@ -181,7 +75,7 @@ def temperatures():
 
     """Return a list of temperature data for last year"""
     # Query all 
-    results = session.query(Measurement.date, Measurement.tobs).filter(Measurement.date >= one_year_date).all()
+    results = session.query(Measurement.date, Measurement.tobs).filter(Measurement.date >= "08-23-2016").all()
 
     session.close()
 
@@ -189,6 +83,28 @@ def temperatures():
 
     return jsonify(all_temperatures)
 
+
+@app.route("/api/v1.0/<start>/<end>")
+def calc_temps(start_date, end_date):
+    session = Session(engine)
+    """TMIN, TAVG, and TMAX for a list of dates.
     
+    Args:
+        start_date (string): A date string in the format %Y-%m-%d
+        end_date (string): A date string in the format %Y-%m-%d
+        
+    Returns:
+        TMIN, TAVE, and TMAX
+    """
+    session.close()
+
+    return session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
+        filter(Measurement.date >= start_date).filter(Measurement.date <= end_date).all()
+
+# function usage example
+print(calc_temps('2012-02-28', '2012-03-05'))
+
+  
 if __name__ == '__main__':
     app.run(debug=True)
+
